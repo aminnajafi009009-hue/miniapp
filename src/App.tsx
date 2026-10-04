@@ -1,7 +1,7 @@
+import WebApp from "@twa-dev/sdk";
 import { AnimatePresence } from "framer-motion";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import MainLayout from "@layouts/MainLayout";
 import Skeleton from "@/shared/ui/Skeleton";
@@ -30,28 +30,57 @@ function RouteFallback() {
   );
 }
 
-function RoleRedirect() {
+// =====================================================================
+// AdminGate: اجرا می‌شود فقط روی صفحه‌ی ریشه (/).
+// دو مسیر تشخیص ادمین:
+//   ۱. start_param در initData تلگرام (سریع، بدون API call)
+//   ۲. فراخوانی /api/me و بررسی is_admin
+// اگر ادمین بود → ریدایرکت به /admin-panel
+// =====================================================================
+function AdminGate() {
   const navigate = useNavigate();
-  const [checking, setChecking] = useState(true);
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
-    // اگر کاربر ادمین بود و روی صفحه‌ی اصلی (پنل کاربری) بود => ریدایرکت به پنل ادمین
-    if (window.location.pathname !== '/') {
-      setChecking(false);
+    // فقط روی صفحه‌ی اصلی بررسی می‌کنیم
+    if (window.location.pathname !== "/") {
+      setDone(true);
       return;
     }
-    fetch('/api/role')
-      .then(r => r.json())
-      .then(data => {
-        if (data.role === 'admin') {
-          navigate('/admin-panel', { replace: true });
+
+    // مسیر اول: start_param تلگرام
+    try {
+      const sp = (WebApp.initDataUnsafe as any)?.start_param ?? "";
+      if (sp === "admin" || sp === "role_admin" || sp === "adminpanel") {
+        navigate("/admin-panel", { replace: true });
+        setDone(true);
+        return;
+      }
+    } catch {
+      // خارج از محیط تلگرام
+    }
+
+    // مسیر دوم: /api/me → is_admin
+    const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+    let initData = "";
+    try { initData = WebApp.initData || ""; } catch { /* */ }
+    const headers: Record<string, string> = initData
+      ? { Authorization: `tma ${initData}` }
+      : {};
+
+    fetch(`${BASE}/api/me`, { headers })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.is_admin) {
+          navigate("/admin-panel", { replace: true });
         }
       })
-      .catch(() => {})
-      .finally(() => setChecking(false));
+      .catch(() => { /* اگر خطا بود، کاربر همان صفحه‌ی عادی را می‌بیند */ })
+      .finally(() => setDone(true));
   }, [navigate]);
 
-  if (checking && window.location.pathname === '/') {
+  // تا وقتی بررسی ادمین تموم نشده، اسکلتون نشان بده (فقط روی /)
+  if (!done && window.location.pathname === "/") {
     return <RouteFallback />;
   }
   return null;
@@ -60,79 +89,35 @@ function RoleRedirect() {
 function App() {
   return (
     <AnimatePresence mode="wait">
+      {/* AdminGate کنار Routes رندر می‌شود، نه داخل Routes */}
+      <AdminGate />
+
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="/*" element={<RoleRedirect />} />
-
+          {/* ===== صفحات ادمین/ریسلر (بدون MainLayout) ===== */}
           <Route
             path="/admin-panel"
             element={<AdminPage />}
           />
-
           <Route
             path="/reseller"
             element={<ResellerPage />}
           />
 
+          {/* ===== صفحات عادی کاربر (با MainLayout) ===== */}
           <Route element={<MainLayout />}>
-
-            <Route
-              path="/"
-              element={<HomePage />}
-            />
-
-            <Route
-              path="/wallet"
-              element={<WalletPage />}
-            />
-
-            <Route
-              path="/services"
-              element={<ServicesPage />}
-            />
-
-            <Route
-              path="/subscription"
-              element={<SubscriptionPage />}
-            />
-
-            <Route
-              path="/referral"
-              element={<ReferralPage />}
-            />
-
-            <Route
-              path="/support"
-              element={<SupportPage />}
-            />
-
-            <Route
-              path="/profile"
-              element={<ProfilePage />}
-            />
-
-            <Route
-              path="/settings"
-              element={<SettingsPage />}
-            />
-
-            <Route
-              path="/discount"
-              element={<DiscountPage />}
-            />
-
-            <Route
-              path="/free-trial"
-              element={<FreeTrialPage />}
-            />
-
-            <Route
-              path="/custom-build"
-              element={<CustomBuildPage />}
-            />
-
+            <Route path="/" element={<HomePage />} />
+            <Route path="/wallet" element={<WalletPage />} />
+            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/subscription" element={<SubscriptionPage />} />
+            <Route path="/referral" element={<ReferralPage />} />
+            <Route path="/support" element={<SupportPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/discount" element={<DiscountPage />} />
+            <Route path="/free-trial" element={<FreeTrialPage />} />
+            <Route path="/custom-build" element={<CustomBuildPage />} />
           </Route>
-
         </Routes>
       </Suspense>
     </AnimatePresence>
