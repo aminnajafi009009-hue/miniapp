@@ -1,14 +1,11 @@
 import { AnimatePresence } from "framer-motion";
-import { Routes, Route } from "react-router-dom";
-import { Suspense, lazy } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { Suspense, lazy, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import MainLayout from "@layouts/MainLayout";
 import Skeleton from "@/shared/ui/Skeleton";
 
-// HomePage صفحه‌ی اول ورودی مینی‌اپه، پس همیشه eager لود می‌شه (بدون تأخیر
-// اضافه‌ی chunk جدا). بقیه‌ی صفحات فقط وقتی کاربر واقعاً بهشون navigate کنه
-// دانلود می‌شن (کد-اسپلیتینگ) تا حجم اولیه‌ی باندل و زمان لود اول کمتر بشه —
-// این برای کاربرهایی که با فیلترشکن وصل می‌شن محسوس‌تره.
 import HomePage from "@pages/Home/HomePage";
 const WalletPage = lazy(() => import("@pages/Wallet/WalletPage"));
 const ServicesPage = lazy(() => import("@pages/Services/ServicesPage"));
@@ -33,11 +30,39 @@ function RouteFallback() {
   );
 }
 
+function RoleRedirect() {
+  const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    // اگر کاربر ادمین بود و روی صفحه‌ی اصلی (پنل کاربری) بود => ریدایرکت به پنل ادمین
+    if (window.location.pathname !== '/') {
+      setChecking(false);
+      return;
+    }
+    fetch('/api/role')
+      .then(r => r.json())
+      .then(data => {
+        if (data.role === 'admin') {
+          navigate('/admin-panel', { replace: true });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, [navigate]);
+
+  if (checking && window.location.pathname === '/') {
+    return <RouteFallback />;
+  }
+  return null;
+}
+
 function App() {
   return (
     <AnimatePresence mode="wait">
       <Suspense fallback={<RouteFallback />}>
         <Routes>
+          <Route path="/*" element={<RoleRedirect />} />
 
           <Route
             path="/admin-panel"
